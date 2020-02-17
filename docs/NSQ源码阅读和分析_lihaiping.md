@@ -1,0 +1,20 @@
+## NSQ源码阅读和分析
+
+本文记录自己在阅读和学习nsq源码的时候的一些学习笔记，主要目的是个人总结和方便后期查阅。
+
+author:lihaiping1603@aliyun.com
+
+date:2020/01/13
+
+### NSQ对于发送出去的消息，是如何保证可靠性的
+
+对于topic下的channel中的消息会有router()函数进行路由，它将消息流转到内存的chan中，即channel中的incomingMsgChan转到memoryMsgChan，如果memoryMsgChan消息满了，堵住的话，就会将消息写入到backend中。
+
+对于memoryMsgChan中消息，会在channel的messagePump()函数中进行再一次的流转，他会将消息从memoryMsgChan通道中接收，然后再次转发到clientMsgChan中去。
+
+对于每个client网络链接，NSQ都会对此client网络链接新建一个IOLoop()的goroutine来处理一切和client的消息。当client发送SUB订阅命令之后，client会根据它订阅的topic和channel，再启动一个goroutine来推送channel中的msg到client，这个函数就是messagePump()函数。而在client的messagePump中，主要的任务就是发送心跳和和接收来自channel中clientMsgChan消息，然后将消息打包发送给client。当然消息发送给client可能会失败，所以NSQ在这里做一个很好的容错失败的策略，当我们将消息推送给client的时候，既然消息可能会失败，所以我们就需要将消息存起来，于是client会将这个消息在它所在的channel中，启动一个超时策略，如果超时的话，消息会被再次以跟宠topic流转到chanel同样的流程进入到channel的消息流转流程。
+
+而client在发送网络消息之前，会通过调用client.Channel.StartInFlightTimeout(msg, client)函数，来将消息msg和client一起生成一个另外的消息对象inFlightMessage,然后再将这个消息对象增加超时时间，进一步封装成pqueue.Item,然后分别存储到 channel的inFlightMessages和inFlightPQ中，其中inFlightMessages是一个map，他以msg的id为key进行存储，方便等会当客户端收到消息应答以后，进行删除操作。同时在inFlightPQ中，这个主要是做超时用的，因为channel中会启动一个goroutine函数inFlightWorker来专门处理inFlightPQ中超时消息。
+
+在inFlightWorker()中，主要根据超时时间来不断的从pq队列中取消息，如果超时时间到了，消息还没有从inFlightPQ队列中删除掉，说明这个消息可能丢失或者出现什么问题了，我们就需要重新流转这个消息。
+
