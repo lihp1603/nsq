@@ -117,19 +117,19 @@ func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error 
 
 func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	switch {
-	case bytes.Equal(params[0], []byte("SUB")):
+	case bytes.Equal(params[0], []byte("SUB")): //订阅
 		return p.SUB(client, params)
-	case bytes.Equal(params[0], []byte("RDY")):
+	case bytes.Equal(params[0], []byte("RDY")): //更新 RDY 状态 (表示你已经准备好接收N 消息)
 		return p.RDY(client, params)
-	case bytes.Equal(params[0], []byte("FIN")):
+	case bytes.Equal(params[0], []byte("FIN")): //完成了这条消息,意思是我处理完成了这条消息，所有需要从即时消息队列中删除，放到低优先级队列中
 		return p.FIN(client, params)
-	case bytes.Equal(params[0], []byte("REQ")):
+	case bytes.Equal(params[0], []byte("REQ")): //消息重新入队,如果带过来的参数超时时间为0,立马进入即时消息队列InFlight中，否则会放入deferredPQ
 		return p.REQ(client, params)
-	case bytes.Equal(params[0], []byte("CLS")):
+	case bytes.Equal(params[0], []byte("CLS")): //关闭
 		return p.CLS(client, params)
-	case bytes.Equal(params[0], []byte("NOP")):
+	case bytes.Equal(params[0], []byte("NOP")): //啥都不做
 		return p.NOP(client, params)
-	case bytes.Equal(params[0], []byte("PUB")):
+	case bytes.Equal(params[0], []byte("PUB")): //推送topic和channel,以及message
 		return p.PUB(client, params)
 	}
 	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
